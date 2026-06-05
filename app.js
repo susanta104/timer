@@ -1592,6 +1592,7 @@ const Auth = {
   },
 
   bindEvents() {
+    // Safely query elements inside a try-catch block
     const form = document.getElementById('auth-form');
     const toggleBtn = document.getElementById('auth-toggle-mode');
     const logoutBtn = document.getElementById('auth-logout-btn');
@@ -1602,38 +1603,52 @@ const Auth = {
         e.preventDefault();
         const email = document.getElementById('auth-email').value;
         const password = document.getElementById('auth-password').value;
-        const fullName = document.getElementById('auth-fullname').value;
+        const fullNameElement = document.getElementById('auth-fullname');
+        const fullName = fullNameElement ? fullNameElement.value : '';
 
         const submitBtn = document.getElementById('auth-submit-btn');
-        submitBtn.disabled = true;
-        submitBtn.textContent = this.isSignUpMode ? 'Creating Account...' : 'Logging In...';
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.textContent = this.isSignUpMode ? 'Creating Account...' : 'Logging In...';
+        }
 
         if (this.isSignUpMode) {
           await this.signUp(email, password, fullName);
         } else {
           await this.signIn(email, password);
         }
-        submitBtn.disabled = false;
+        
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = this.isSignUpMode ? 'Create Account' : 'Log In';
+        }
       });
+    } else {
+      console.error("Auth Error: Could not find 'auth-form' element in HTML.");
     }
 
     if (toggleBtn) {
-      toggleBtn.addEventListener('click', () => {
+      toggleBtn.addEventListener('click', (e) => {
+        e.preventDefault(); // Stop any default form jumping
         this.isSignUpMode = !this.isSignUpMode;
+        
         const nameGroup = document.getElementById('auth-name-group');
         const submitBtn = document.getElementById('auth-submit-btn');
+        const fullnameInput = document.getElementById('auth-fullname');
         
-        nameGroup.hidden = !this.isSignUpMode;
-        document.getElementById('auth-fullname').required = this.isSignUpMode;
+        if (nameGroup) nameGroup.hidden = !this.isSignUpMode;
+        if (fullnameInput) fullnameInput.required = this.isSignUpMode;
         
-        if (this.isSignUpMode) {
-          submitBtn.textContent = 'Create Account';
-          toggleBtn.textContent = 'Already have an account? Log In';
-        } else {
-          submitBtn.textContent = 'Log In';
-          toggleBtn.textContent = "Don't have an account? Sign Up";
+        if (submitBtn) {
+          submitBtn.textContent = this.isSignUpMode ? 'Create Account' : 'Log In';
         }
+        
+        toggleBtn.textContent = this.isSignUpMode 
+          ? 'Already have an account? Log In' 
+          : "Don't have an account? Sign Up";
       });
+    } else {
+      console.error("Auth Error: Could not find 'auth-toggle-mode' element in HTML.");
     }
 
     if (logoutBtn) {
@@ -1642,12 +1657,11 @@ const Auth = {
 
     if (syncNowBtn) {
       syncNowBtn.addEventListener('click', () => {
-        Toast.show('Syncing with cloud...', 'info');
         this.syncLocalToCloud(true);
       });
     }
   },
-
+  
   async signUp(email, password, fullName) {
     try {
       const { data, error } = await supabase.auth.signUp({
