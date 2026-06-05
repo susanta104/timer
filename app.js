@@ -697,6 +697,41 @@ const Dashboard = {
 /* ------------------------------------------------------------------ */
 
 const Timer = {
+  // Existing properties like timerId: null, timeRemaining: 0, etc.
+  wakeLock: null, // <-- Add this to track the lock object
+
+  // Add these helper methods inside the Timer object:
+  async requestWakeLock() {
+    if (!('wakeLock' in navigator)) return;
+    try {
+      if (!this.wakeLock) {
+        this.wakeLock = await navigator.wakeLock.request('screen');
+        console.log('Screen Wake Lock active.');
+        
+        // Auto-recover if tab is minimized and returned to
+        this.wakeLock.addEventListener('release', () => {
+          if (document.visibilityState === 'visible' && this.timerId) {
+            this.requestWakeLock();
+          }
+        });
+      }
+    } catch (err) {
+      console.warn(`Wake Lock request failed: ${err.message}`);
+    }
+  },
+
+  releaseWakeLock() {
+    if (this.wakeLock) {
+      this.wakeLock.release()
+        .then(() => {
+          this.wakeLock = null;
+          console.log('Screen Wake Lock released.');
+        });
+    }
+  },
+  
+  // ... rest of your Timer methods
+const Timer = {
   state: 'idle',
   mode: 'free',
   elapsedSeconds: 0,
