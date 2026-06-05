@@ -26,6 +26,12 @@ const TIMER_PRESETS = {
   custom: 0
 };
 
+// Global Supabase Configurations
+const SUPABASE_URL = 'https://gdlfbybyvkvmbyclgswv.supabase.co'; 
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVlb3Nia3FmYmJ5ZHFkbHpobnB0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2NzQ5MTcsImV4cCI6MjA5NjI1MDkxN30.dTUz1r0YpEIwyDkt9pXAmRi9MbCZ5L6f36LXxj3DgjY';
+
+const supabase = window.supabase.createClient(https://gdlfbybyvkvmbyclgswv.supabase.co, eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVlb3Nia3FmYmJ5ZHFkbHpobnB0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2NzQ5MTcsImV4cCI6MjA5NjI1MDkxN30.dTUz1r0YpEIwyDkt9pXAmRi9MbCZ5L6f36LXxj3DgjY);
+
 const PRESET_LABELS = {
   free: 'Free Timer (counts up)',
   pomodoro: 'Pomodoro — 25 min',
