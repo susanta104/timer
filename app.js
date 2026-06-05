@@ -496,6 +496,10 @@ complete() {
     setTimeout(() => { Auth.syncLocalToCloud(); }, 2000); // Trigger right after save handling
   },
 
+/* ------------------------------------------------------------------ */
+/* Sessions                                                           */
+/* ------------------------------------------------------------------ */
+
 const Sessions = {
   list: [],
 
