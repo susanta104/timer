@@ -333,6 +333,46 @@
           </div>
         </div>
 
+        <div class="card" id="auth-settings-card">
+          <h2 class="card-heading">Cloud Sync Account</h2>
+          
+          <div id="auth-logged-out" class="auth-form-container">
+            <p class="muted mb-md">Log in to safely back up your study sessions, syllabus metrics, and streaks to the cloud.</p>
+            <form id="auth-form" class="vertical-form">
+              <div class="form-group" id="auth-name-group" hidden>
+                <label for="auth-fullname">Full Name</label>
+                <input type="text" id="auth-fullname" placeholder="Dr. Your Name" autocomplete="name">
+              </div>
+              <div class="form-group">
+                <label for="auth-email">Email Address</label>
+                <input type="email" id="auth-email" placeholder="student@medical.edu" required autocomplete="email">
+              </div>
+              <div class="form-group">
+                <label for="auth-password">Password</label>
+                <input type="password" id="auth-password" placeholder="••••••••" required autocomplete="current-password" minlength="6">
+              </div>
+              <button type="submit" id="auth-submit-btn" class="btn btn-primary btn-block">Log In</button>
+            </form>
+            <p class="text-center mt-md">
+              <button type="button" id="auth-toggle-mode" class="btn btn-link btn-sm">Don't have an account? Sign Up</button>
+            </p>
+          </div>
+
+          <div id="auth-logged-in" class="auth-profile-container" hidden>
+            <div class="setting-row">
+              <div>
+                <p class="font-semibold" id="auth-user-display">Account Connected</p>
+                <p class="muted text-sm" id="auth-user-email">email@example.com</p>
+              </div>
+              <span class="badge badge-success" id="sync-status-badge">☁️ Synced</span>
+            </div>
+            <div class="btn-group mt-md">
+              <button id="auth-sync-now-btn" class="btn btn-secondary" type="button">Sync Now</button>
+              <button id="auth-logout-btn" class="btn btn-ghost text-danger" type="button">Log Out</button>
+            </div>
+          </div>
+        </div>
+        
         <div class="card">
           <h2 class="card-heading">Exam Date</h2>
           <form id="exam-date-form">
