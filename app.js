@@ -1563,19 +1563,88 @@ const PWA = {
   }
 };
 
+/* ==========================================================================
+   SUPABASE AUTHENTICATION & CLOUD SYNC MODULE
+   ========================================================================== */
 const Auth = {
   user: null,
+  isSignUpMode: false,
 
   async init() {
-    // Check if a user session is already active on load
+    // 1. Get current session stability
     const { data: { session } } = await supabase.auth.getSession();
     this.user = session?.user || null;
     
-    // Listen for auth state modifications (sign in, sign out, etc.)
+    // 2. Initialize UI listeners
+    this.bindEvents();
+
+    // 3. Keep an eye on global state updates
     supabase.auth.onAuthStateChange((_event, session) => {
       this.user = session?.user || null;
       this.updateUI();
+      if (this.user) {
+        this.syncLocalToCloud(); // Auto sync on login or token refresh
+      }
     });
+
+    this.updateUI();
+  },
+
+  bindEvents() {
+    const form = document.getElementById('auth-form');
+    const toggleBtn = document.getElementById('auth-toggle-mode');
+    const logoutBtn = document.getElementById('auth-logout-btn');
+    const syncNowBtn = document.getElementById('auth-sync-now-btn');
+
+    if (form) {
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = document.getElementById('auth-email').value;
+        const password = document.getElementById('auth-password').value;
+        const fullName = document.getElementById('auth-fullname').value;
+
+        const submitBtn = document.getElementById('auth-submit-btn');
+        submitBtn.disabled = true;
+        submitBtn.textContent = this.isSignUpMode ? 'Creating Account...' : 'Logging In...';
+
+        if (this.isSignUpMode) {
+          await this.signUp(email, password, fullName);
+        } else {
+          await this.signIn(email, password);
+        }
+        submitBtn.disabled = false;
+      });
+    }
+
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', () => {
+        this.isSignUpMode = !this.isSignUpMode;
+        const nameGroup = document.getElementById('auth-name-group');
+        const submitBtn = document.getElementById('auth-submit-btn');
+        
+        nameGroup.hidden = !this.isSignUpMode;
+        document.getElementById('auth-fullname').required = this.isSignUpMode;
+        
+        if (this.isSignUpMode) {
+          submitBtn.textContent = 'Create Account';
+          toggleBtn.textContent = 'Already have an account? Log In';
+        } else {
+          submitBtn.textContent = 'Log In';
+          toggleBtn.textContent = "Don't have an account? Sign Up";
+        }
+      });
+    }
+
+    if (logoutBtn) {
+      logoutBtn.addEventListener('click', () => this.signOut());
+    }
+
+    if (syncNowBtn) {
+      syncNowBtn.addEventListener('click', () => {
+        Toast.show('Syncing with cloud...', 'info');
+        this.syncLocalToCloud(true);
+      });
+    }
   },
 
   async signUp(email, password, fullName) {
@@ -1583,12 +1652,10 @@ const Auth = {
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
-        options: {
-          data: { full_name: fullName }
-        }
+        options: { data: { full_name: fullName } }
       });
       if (error) throw error;
-      Toast.show('Signup successful! Check your email for validation.', 'success');
+      Toast.show('Account created! Check your email to verify.', 'success');
       return data;
     } catch (err) {
       Toast.show(err.message, 'error');
@@ -1599,7 +1666,7 @@ const Auth = {
     try {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
-      Toast.show('Logged in successfully!', 'success');
+      Toast.show('Welcome back!', 'success');
       return data;
     } catch (err) {
       Toast.show(err.message, 'error');
@@ -1617,12 +1684,84 @@ const Auth = {
   },
 
   updateUI() {
-    // This is where you can hide or show login forms, update profile names,
-    // and sync your IndexedDB logs up to your Supabase tables if a user is online.
+    const loggedOutDiv = document.getElementById('auth-logged-out');
+    const loggedInDiv = document.getElementById('auth-logged-in');
+    const emailLabel = document.getElementById('auth-user-email');
+    const displayLabel = document.getElementById('auth-user-display');
+
+    if (!loggedOutDiv || !loggedInDiv) return;
+
     if (this.user) {
-      console.log('User logged in:', this.user.email);
+      loggedOutDiv.hidden = true;
+      loggedInDiv.hidden = false;
+      emailLabel.textContent = this.user.email;
+      displayLabel.textContent = this.user.user_metadata?.full_name 
+        ? `Dr. ${this.user.user_metadata.full_name}` 
+        : 'Medical Student Command Center';
     } else {
-      console.log('User is a guest.');
+      loggedOutDiv.hidden = false;
+      loggedInDiv.hidden = true;
+    }
+  },
+
+  /**
+   * REVOLUTIONARY CLOUD SYNCHRONIZER
+   * Collects all records stored locally inside IndexedDB 
+   * and pushes them atomically to Supabase for protection.
+   */
+  async syncLocalToCloud(manualAlert = false) {
+    if (!this.user || !navigator.onLine) {
+      if (manualAlert && !navigator.onLine) Toast.show('Cannot sync while offline.', 'error');
+      return;
+    }
+
+    const badge = document.getElementById('sync-status-badge');
+    if (badge) {
+      badge.textContent = '🔄 Syncing...';
+      badge.style.background = 'var(--warning)';
+    }
+
+    try {
+      // 1. Grab all logs out of local IndexedDB storage
+      const localSessions = await Database.getAll('sessions') || [];
+      
+      if (localSessions.length === 0) {
+        if (badge) {
+          badge.textContent = '☁️ Synced (Empty)';
+          badge.style.background = 'var(--accent)';
+        }
+        return;
+      }
+
+      // 2. Map local records to match cloud schema layout
+      const formattedRecords = localSessions.map(session => ({
+        id: session.id, // retains matching unique ID across clients
+        user_id: this.user.id,
+        date: session.date,
+        subject_id: session.subjectId,
+        duration_minutes: Math.max(1, Math.round(session.duration / 60)) || session.minutes || 1,
+        notes: session.notes || ''
+      }));
+
+      // 3. Perform an UPSERT operation on Supabase (Insert or Update if ID exists)
+      const { error } = await supabase
+        .from('study_sessions')
+        .upsert(formattedRecords, { onConflict: 'id' });
+
+      if (error) throw error;
+
+      if (badge) {
+        badge.textContent = '☁️ Synced';
+        badge.style.background = 'var(--success)';
+      }
+      if (manualAlert) Toast.show('Cloud database updated successfully!', 'success');
+    } catch (syncError) {
+      console.error('Cloud Sync failed:', syncError);
+      if (badge) {
+        badge.textContent = '⚠️ Sync Failed';
+        badge.style.background = 'var(--danger)';
+      }
+      if (manualAlert) Toast.show('Cloud sync failed. Check console configurations.', 'error');
     }
   }
 };
