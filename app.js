@@ -1,12 +1,12 @@
 /**
- * MBBS Study Command Center v1.1
- * Modular study-tracking PWA with IndexedDB persistence.
+ * MBBS Study Command Center v2.0
+ * Local-first PWA with IndexedDB + optional Supabase cloud sync.
  */
 
 'use strict';
 
 const DB_NAME = 'MBBSStudyDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const THEME_STORAGE_KEY = 'mbbs-theme';
 
 const DEFAULT_SUBJECTS = [
@@ -225,25 +225,37 @@ const Database = {
     );
   },
 
-  put(storeName, data) {
+  put(storeName, data, skipSync = false) {
+    const record = { ...data, updatedAt: data.updatedAt || Date.now() };
     return this.open().then(
       () =>
         new Promise((resolve, reject) => {
           const tx = this.db.transaction(storeName, 'readwrite');
           tx.onerror = () => reject(tx.error);
-          tx.oncomplete = () => resolve();
-          tx.objectStore(storeName).put(data);
+          tx.oncomplete = () => {
+            if (!skipSync && typeof CloudSync !== 'undefined') CloudSync.scheduleSync();
+            resolve();
+          };
+          tx.objectStore(storeName).put(record);
         })
     );
   },
 
-  delete(storeName, key) {
+  delete(storeName, key, skipSync = false) {
     return this.open().then(
       () =>
         new Promise((resolve, reject) => {
           const tx = this.db.transaction(storeName, 'readwrite');
           tx.onerror = () => reject(tx.error);
-          tx.oncomplete = () => resolve();
+          tx.oncomplete = () => {
+            if (!skipSync) {
+              if (typeof CloudSync !== 'undefined') {
+                CloudSync.softDelete(storeName, key);
+                CloudSync.scheduleSync();
+              }
+            }
+            resolve();
+          };
           tx.objectStore(storeName).delete(key);
         })
     );
@@ -260,8 +272,12 @@ const Database = {
     );
   },
 
-  setSetting(key, value) {
-    return this.put('settings', { key, value });
+  setSetting(key, value, skipSync = false) {
+    return this.put('settings', { key, value }, skipSync).then(async () => {
+      if (!skipSync && key !== 'settingsUpdatedAt') {
+        await this.put('settings', { key: 'settingsUpdatedAt', value: Date.now() }, true);
+      }
+    });
   },
 
   async seedDefaults() {
@@ -271,19 +287,6 @@ const Database = {
     }
   },
 
-  clearAll() {
-    const stores = ['sessions', 'subjects', 'topics', 'settings'];
-    return this.open().then(
-      () =>
-        new Promise((resolve, reject) => {
-          const tx = this.db.transaction(stores, 'readwrite');
-          tx.onerror = () => reject(tx.error);
-          tx.oncomplete = () => resolve();
-          stores.forEach((name) => tx.objectStore(name).clear());
-        })
-    );
-  },
-
   async exportAll() {
     const [sessions, subjects, topics, settings] = await Promise.all([
       this.getAll('sessions'),
@@ -291,19 +294,36 @@ const Database = {
       this.getAll('topics'),
       this.getAll('settings')
     ]);
-    return { version: 1, exportedAt: new Date().toISOString(), sessions, subjects, topics, settings };
+    return { version: 2, exportedAt: new Date().toISOString(), sessions, subjects, topics, settings };
   },
 
   async importAll(data) {
-    if (!data || data.version !== 1) throw new Error('Invalid backup file format');
-    await this.clearAll();
+    if (!data || !data.version) throw new Error('Invalid backup file format');
+    await this.clearAll(true);
     await Promise.all([
-      ...(data.sessions || []).map((s) => this.put('sessions', s)),
-      ...(data.subjects || []).map((s) => this.put('subjects', s)),
-      ...(data.topics || []).map((t) => this.put('topics', t)),
-      ...(data.settings || []).map((s) => this.put('settings', s))
+      ...(data.sessions || []).map((s) => this.put('sessions', s, true)),
+      ...(data.subjects || []).map((s) => this.put('subjects', s, true)),
+      ...(data.topics || []).map((t) => this.put('topics', t, true)),
+      ...(data.settings || []).map((s) => this.put('settings', s, true))
     ]);
     if (!(data.subjects || []).length) await this.seedDefaults();
+    if (typeof CloudSync !== 'undefined') CloudSync.scheduleSync();
+  },
+
+  clearAll(skipSync = false) {
+    const stores = ['sessions', 'subjects', 'topics', 'settings'];
+    return this.open().then(
+      () =>
+        new Promise((resolve, reject) => {
+          const tx = this.db.transaction(stores, 'readwrite');
+          tx.onerror = () => reject(tx.error);
+          tx.oncomplete = () => {
+            if (!skipSync && typeof CloudSync !== 'undefined') CloudSync.scheduleSync();
+            resolve();
+          };
+          stores.forEach((name) => tx.objectStore(name).clear());
+        })
+    );
   }
 };
 
@@ -488,7 +508,8 @@ const Sessions = {
       subjectId: session.subjectId,
       durationMinutes: session.durationMinutes,
       notes: session.notes || '',
-      createdAt
+      createdAt,
+      updatedAt: Date.now()
     });
     await this.load();
   },
@@ -680,6 +701,14 @@ const Dashboard = {
 
     Streak.updateUI(Sessions.list);
 
+    const welcome = document.getElementById('dashboard-welcome');
+    if (welcome && CloudSync.profile?.display_name) {
+      welcome.textContent = `Welcome back, ${CloudSync.profile.display_name}`;
+      welcome.hidden = false;
+    } else if (welcome) {
+      welcome.hidden = true;
+    }
+
     const recentEl = document.getElementById('recent-sessions');
     const recent = Sessions.list.slice(0, 5);
     if (recentEl) {
@@ -693,7 +722,252 @@ const Dashboard = {
 };
 
 /* ------------------------------------------------------------------ */
-/* Timer — uses wall-clock time (accurate in background tabs)         */
+/* Screen Awake — prevents auto screen-off during active timer        */
+/* ------------------------------------------------------------------ */
+
+const ScreenAwake = {
+  wakeLock: null,
+  videoEl: null,
+  enabled: true,
+  active: false,
+  _streamReady: false,
+  _releaseHandler: null,
+
+  async init() {
+    this.enabled = await Database.getSetting('keepScreenAwake', true);
+    this.videoEl = document.getElementById('keep-awake-video');
+    this.setupFallbackVideo();
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && Timer.state === 'running') {
+        this.acquire();
+      }
+    });
+
+    document.getElementById('toggle-keep-awake')?.addEventListener('click', async () => {
+      this.enabled = !this.enabled;
+      await Database.setSetting('keepScreenAwake', this.enabled);
+      this.updateSettingsToggle();
+      if (this.enabled && Timer.state === 'running') {
+        await this.acquire();
+      } else if (!this.enabled) {
+        await this.release();
+      }
+    });
+  },
+
+  /** Canvas video stream fallback for iOS/Safari when Wake Lock is unavailable. */
+  setupFallbackVideo() {
+    if (!this.videoEl || this._streamReady) return;
+    try {
+      this._canvas = document.createElement('canvas');
+      this._canvas.width = 2;
+      this._canvas.height = 2;
+      this._canvasCtx = this._canvas.getContext('2d');
+      this._canvasCtx.fillStyle = '#000';
+      this._canvasCtx.fillRect(0, 0, 2, 2);
+      const stream = this._canvas.captureStream(1);
+      this.videoEl.srcObject = stream;
+      this._streamReady = true;
+    } catch (err) {
+      console.warn('[ScreenAwake] Canvas stream fallback unavailable:', err.message);
+    }
+  },
+
+  _startCanvasKeepAlive() {
+    if (!this._canvasCtx || this._canvasInterval) return;
+    this._canvasInterval = setInterval(() => {
+      this._canvasCtx.fillStyle = '#000';
+      this._canvasCtx.fillRect(0, 0, 2, 2);
+    }, 1000);
+  },
+
+  _stopCanvasKeepAlive() {
+    clearInterval(this._canvasInterval);
+    this._canvasInterval = null;
+  },
+
+  updateSettingsToggle() {
+    const toggle = document.getElementById('toggle-keep-awake');
+    if (toggle) toggle.setAttribute('aria-pressed', String(this.enabled));
+  },
+
+  updateIndicator() {
+    const el = document.getElementById('timer-awake-indicator');
+    if (!el) return;
+    const show = this.active && this.enabled && Timer.state === 'running';
+    el.classList.toggle('hidden', !show);
+  },
+
+  async acquire() {
+    if (!this.enabled || this.active) return;
+    let acquired = false;
+
+    if ('wakeLock' in navigator) {
+      try {
+        this.wakeLock = await navigator.wakeLock.request('screen');
+        acquired = true;
+        if (this._releaseHandler) this.wakeLock.removeEventListener('release', this._releaseHandler);
+        this._releaseHandler = () => {
+          this.wakeLock = null;
+          if (Timer.state === 'running' && this.enabled) this.acquire();
+        };
+        this.wakeLock.addEventListener('release', this._releaseHandler);
+      } catch (err) {
+        console.warn('[ScreenAwake] Wake Lock denied:', err.message);
+      }
+    }
+
+    if (!acquired && this.videoEl) {
+      try {
+        this._startCanvasKeepAlive();
+        await this.videoEl.play();
+        acquired = true;
+      } catch (err) {
+        console.warn('[ScreenAwake] Video fallback failed:', err.message);
+        this._stopCanvasKeepAlive();
+      }
+    }
+
+    this.active = acquired;
+    this.updateIndicator();
+  },
+
+  async release() {
+    if (this.wakeLock) {
+      try {
+        if (this._releaseHandler) {
+          this.wakeLock.removeEventListener('release', this._releaseHandler);
+          this._releaseHandler = null;
+        }
+        await this.wakeLock.release();
+      } catch (_) { /* already released */ }
+      this.wakeLock = null;
+    }
+
+    if (this.videoEl) {
+      this._stopCanvasKeepAlive();
+      try {
+        this.videoEl.pause();
+      } catch (_) { /* ignore */ }
+      if (this.videoEl.srcObject) {
+        this.videoEl.srcObject.getTracks?.().forEach((t) => t.stop());
+        this.videoEl.srcObject = null;
+      }
+    }
+
+    this.active = false;
+    this.updateIndicator();
+  }
+};
+
+/* ------------------------------------------------------------------ */
+/* Alert Audio — completion chime for countdown timers                */
+/* ------------------------------------------------------------------ */
+
+const AlertAudio = {
+  ctx: null,
+  enabled: true,
+  unlocked: false,
+
+  async init() {
+    this.enabled = await Database.getSetting('timerSound', true);
+    this.bindUnlock();
+    this.bindSettings();
+  },
+
+  /** iOS/browsers require a user gesture before audio plays. */
+  bindUnlock() {
+    const unlock = () => {
+      this.ensureContext();
+      if (this.ctx?.state === 'suspended') this.ctx.resume();
+      this.unlocked = true;
+    };
+    document.addEventListener('pointerdown', unlock, { once: false, passive: true });
+    document.addEventListener('keydown', unlock, { once: false, passive: true });
+  },
+
+  bindSettings() {
+    document.getElementById('toggle-timer-sound')?.addEventListener('click', async () => {
+      this.enabled = !this.enabled;
+      await Database.setSetting('timerSound', this.enabled);
+      this.updateSettingsToggle();
+    });
+    document.getElementById('test-timer-sound')?.addEventListener('click', () => {
+      this.ensureContext();
+      this.playCompletionAlert(true);
+    });
+  },
+
+  updateSettingsToggle() {
+    const toggle = document.getElementById('toggle-timer-sound');
+    if (toggle) toggle.setAttribute('aria-pressed', String(this.enabled));
+  },
+
+  ensureContext() {
+    if (!this.ctx) {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (Ctx) this.ctx = new Ctx();
+    }
+    return this.ctx;
+  },
+
+  /**
+   * Play a three-note completion chime (works offline via Web Audio API).
+   * @param {boolean} [force=false] — bypass enabled check (for test button)
+   */
+  playCompletionAlert(force = false) {
+    if (!force && !this.enabled) return;
+
+    const ctx = this.ensureContext();
+    if (!ctx) return this.playFallbackBeep(force);
+
+    if (ctx.state === 'suspended') {
+      ctx.resume().then(() => this._playChime(ctx)).catch(() => this.playFallbackBeep(force));
+      return;
+    }
+    this._playChime(ctx);
+  },
+
+  _playChime(ctx) {
+    const now = ctx.currentTime;
+    const notes = [523.25, 659.25, 783.99, 1046.5];
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      const t = now + i * 0.12;
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.25, t + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
+      osc.start(t);
+      osc.stop(t + 0.5);
+    });
+  },
+
+  /** Fallback using oscillator beep if AudioContext unavailable. */
+  playFallbackBeep(force = false) {
+    if (!force && !this.enabled) return;
+    try {
+      const ctx = this.ensureContext();
+      if (!ctx) return;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = 880;
+      gain.gain.value = 0.2;
+      osc.start();
+      osc.stop(ctx.currentTime + 0.4);
+    } catch (_) { /* silent fail */ }
+  }
+};
+
+/* ------------------------------------------------------------------ */
+/* Timer — wall-clock timing + screen awake + audio alerts            */
 /* ------------------------------------------------------------------ */
 
 const Timer = {
@@ -703,14 +977,17 @@ const Timer = {
   startedAt: null,
   pausedElapsed: 0,
   tickId: null,
-  wakeLock: null,
   _pendingMinutes: 0,
+  _completing: false,
 
   init() {
     this.bindEvents();
     this.setPreset('free', true);
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible' && this.state === 'running') this.syncElapsed();
+      if (document.visibilityState === 'visible' && this.state === 'running') {
+        this.syncElapsed();
+        ScreenAwake.acquire();
+      }
     });
   },
 
@@ -721,8 +998,12 @@ const Timer = {
     return TIMER_PRESETS[this.mode] || 0;
   },
 
+  isCountdown() {
+    return this.mode !== 'free' && this.getTargetSeconds() > 0;
+  },
+
   syncElapsed() {
-    if (this.state !== 'running' || !this.startedAt) return;
+    if (this.state !== 'running' || !this.startedAt || this._completing) return;
     this.elapsedSeconds = this.pausedElapsed + Math.floor((Date.now() - this.startedAt) / 1000);
     const target = this.getTargetSeconds();
     if (target > 0 && this.elapsedSeconds >= target) {
@@ -784,47 +1065,39 @@ const Timer = {
     if (stop) stop.disabled = idle;
   },
 
-  async requestWakeLock() {
-    try {
-      if ('wakeLock' in navigator) this.wakeLock = await navigator.wakeLock.request('screen');
-    } catch (_) { /* unsupported or denied */ }
-  },
-
-  releaseWakeLock() {
-    this.wakeLock?.release?.();
-    this.wakeLock = null;
-  },
-
-  start(isResume = false) {
+  async start(isResume = false) {
     if (this.state === 'running') return;
+    AlertAudio.ensureContext();
+    if (AlertAudio.ctx?.state === 'suspended') await AlertAudio.ctx.resume();
+
     this.state = 'running';
     this.startedAt = Date.now();
     this.startTicking();
-    this.requestWakeLock();
+    await ScreenAwake.acquire();
     this.updateButtons();
     if (!isResume) Toast.show('Timer started', 'info');
   },
 
-  pause() {
+  async pause() {
     if (this.state !== 'running') return;
     this.syncElapsed();
     this.pausedElapsed = this.elapsedSeconds;
     this.state = 'paused';
     this.startedAt = null;
     this.stopTicking();
-    this.releaseWakeLock();
+    await ScreenAwake.release();
     this.updateButtons();
   },
 
-  resume() {
+  async resume() {
     if (this.state !== 'paused') return;
-    this.start(true);
+    await this.start(true);
   },
 
-  stop() {
+  async stop() {
     this.syncElapsed();
     const elapsed = this.elapsedSeconds;
-    this.resetClock(false);
+    await this.resetClock(false);
 
     if (elapsed >= 60) {
       this._pendingMinutes = Math.max(1, Math.round(elapsed / 60));
@@ -835,18 +1108,30 @@ const Timer = {
     }
   },
 
-  complete() {
+  async complete() {
+    if (this._completing) return;
+    this._completing = true;
+    this.stopTicking();
+
     const elapsed = this.elapsedSeconds;
-    this.resetClock(false);
-    if ('vibrate' in navigator) navigator.vibrate([200, 100, 200]);
-    Toast.show('Timer complete!', 'success');
-    this._pendingMinutes = Math.max(1, Math.round(elapsed / 60));
-    this.openSaveModal();
+    const wasCountdown = this.isCountdown();
+
+    await this.resetClock(false);
+
+    if (wasCountdown) {
+      AlertAudio.playCompletionAlert();
+      if ('vibrate' in navigator) navigator.vibrate([200, 100, 200, 100, 200]);
+      Toast.show('Timer complete!', 'success');
+      this._pendingMinutes = Math.max(1, Math.round(elapsed / 60));
+      this.openSaveModal();
+    }
+
+    this._completing = false;
   },
 
-  resetClock(keepMode = true) {
+  async resetClock(keepMode = true) {
     this.stopTicking();
-    this.releaseWakeLock();
+    await ScreenAwake.release();
     this.state = 'idle';
     this.elapsedSeconds = 0;
     this.pausedElapsed = 0;
@@ -1091,7 +1376,8 @@ const Syllabus = {
         name,
         subjectId,
         completed: false,
-        createdAt: Date.now()
+        createdAt: Date.now(),
+        updatedAt: Date.now()
       });
       document.getElementById('topic-name').value = '';
       Toast.show('Topic added', 'success');
@@ -1105,6 +1391,7 @@ const Syllabus = {
         const topic = this.topics.find((t) => t.id === toggle.dataset.toggle);
         if (!topic) return;
         topic.completed = !topic.completed;
+        topic.updatedAt = Date.now();
         await Database.put('topics', topic);
         await this.render();
       } else if (del && confirm('Delete this topic?')) {
@@ -1398,7 +1685,12 @@ const Navigation = {
 
     if (sectionId === 'analytics') Analytics.render();
     if (sectionId === 'exam') Exam.renderAll();
-    if (sectionId === 'settings') Exam.loadDateInput();
+    if (sectionId === 'settings') {
+      Exam.loadDateInput();
+      ScreenAwake.updateSettingsToggle();
+      AlertAudio.updateSettingsToggle();
+      if (typeof AuthUI !== 'undefined') AuthUI.renderAccountSection();
+    }
   },
 
   toggleSidebar(open) {
@@ -1517,8 +1809,15 @@ const App = {
       Subjects.populateSelects();
 
       Timer.init();
+      await ScreenAwake.init();
+      await AlertAudio.init();
+      ScreenAwake.updateSettingsToggle();
+      AlertAudio.updateSettingsToggle();
       Navigation.init();
       PWA.init();
+
+      if (typeof CloudSync !== 'undefined') await CloudSync.init();
+      if (typeof AuthUI !== 'undefined') AuthUI.init();
 
       Subjects.bindEvents();
       Logs.bindEvents();

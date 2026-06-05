@@ -1,147 +1,150 @@
-# MBBS Study Command Center
+# MBBS Study Command Center v2.0
 
-A professional, offline-capable Progressive Web App (PWA) for medical students to track study hours, manage syllabus progress, and prepare for exams.
-
-![MBBS Study Command Center](assets/icon-512.png)
+Professional study-tracking PWA for medical students with **offline-first storage** and **free cloud sync** via Supabase.
 
 ## Features
 
-- **Dashboard** — Today, weekly, monthly, and lifetime study hours at a glance
-- **Study Timer** — Pomodoro (25 min), Deep Work (50 min), Focus (90 min), custom, and free timers
-- **Study Logging** — Manual logs with date, subject, duration, and notes
-- **Subject Management** — Medicine, Surgery, Gynecology, Pediatrics, Dermatology, Others (+ custom subjects)
-- **Syllabus Tracker** — Add topics, mark complete, track progress percentage
-- **Exam Countdown** — Days, weeks, and months until your exam
-- **Analytics** — Chart.js charts (daily, weekly, monthly, subject-wise)
-- **Study Streak** — Current and longest consecutive study-day streaks
-- **Data Backup** — Export/import JSON backups via IndexedDB
-- **Dark Mode** — AMOLED-optimized dark theme
-- **Offline Mode** — Works without internet after first load
-- **Installable** — Add to home screen on Android, iOS, and macOS
-
-## Tech Stack
-
-- HTML5, CSS3, Vanilla JavaScript
-- IndexedDB (local data storage)
-- Chart.js (analytics charts)
-- Service Worker (offline caching)
-- Web App Manifest (installability)
-
-## Quick Start (Local)
-
-```bash
-# Clone or download the repository, then serve locally
-cd mbbs-study-command-center
-python3 -m http.server 8080
-```
-
-Open [http://localhost:8080](http://localhost:8080) in your browser.
-
-> **Note:** PWAs require HTTPS or `localhost` to register the service worker.
-
-## GitHub Pages Deployment (Free Hosting)
-
-### Step 1: Create a GitHub Repository
-
-1. Go to [github.com/new](https://github.com/new)
-2. Name it `mbbs-study-command-center` (or any name)
-3. Set visibility to **Public**
-4. Click **Create repository**
-
-### Step 2: Push Your Code
-
-```bash
-cd mbbs-study-command-center
-git add .
-git commit -m "Initial release: MBBS Study Command Center PWA"
-git branch -M main
-git remote add origin https://github.com/YOUR_USERNAME/mbbs-study-command-center.git
-git push -u origin main
-```
-
-### Step 3: Enable GitHub Pages
-
-1. Open your repo on GitHub
-2. Go to **Settings → Pages**
-3. Under **Build and deployment → Source**, select **Deploy from a branch**
-4. Choose branch: `main`, folder: `/ (root)`
-5. Click **Save**
-
-Your app will be live at:
-
-```
-https://YOUR_USERNAME.github.io/mbbs-study-command-center/
-```
-
-Deployment usually takes 1–3 minutes.
-
-## How to Update Later
-
-1. Edit files locally (`index.html`, `style.css`, `app.js`, etc.)
-2. Test locally with `python3 -m http.server 8080`
-3. Commit and push:
-
-```bash
-git add .
-git commit -m "Describe your changes"
-git push
-```
-
-4. GitHub Pages redeploys automatically within a few minutes
-5. **Important:** After updating `service-worker.js`, bump `CACHE_NAME` (e.g., `mbbs-study-v2`) so users get fresh assets
-
-## Install on Devices
-
-### Android (Chrome)
-
-1. Open your GitHub Pages URL in Chrome
-2. Tap the **⋮** menu → **Install app** or **Add to Home screen**
-3. Confirm — the app icon appears on your home screen
-4. Opens fullscreen like a native app
-
-### iPhone / iPad (Safari)
-
-1. Open your GitHub Pages URL in **Safari**
-2. Tap the **Share** button (square with arrow)
-3. Scroll down and tap **Add to Home Screen**
-4. Name it "MBBS Study" and tap **Add**
-5. Launch from your home screen
-
-> iOS installs PWAs via Safari only (not Chrome).
-
-### MacBook (Chrome or Edge)
-
-1. Open your GitHub Pages URL
-2. Click the **install icon** in the address bar (or ⋮ → **Install MBBS Study Command Center**)
-3. Click **Install**
-4. The app opens in its own window and appears in Applications
-
-## Data & Privacy
-
-- All data is stored **locally** in your browser (IndexedDB)
-- Nothing is sent to any server
-- Use **Export Backup** in Settings to save your data as JSON
-- Use **Import Backup** to restore on a new device
+- Dashboard, timer (Pomodoro / Deep Work / Focus), study logs, subjects, syllabus tracker
+- Exam countdown, analytics charts, study streaks
+- AMOLED dark mode, PWA installable, works offline
+- **Profile system** — display name, college, year, exam date
+- **Cloud sync** — sign in on any device, data syncs automatically
 
 ## Project Structure
 
 ```
 /
-├── index.html          # Main HTML shell
-├── style.css           # Styles (AMOLED dark mode)
-├── app.js              # Application logic
-├── manifest.json       # PWA manifest
-├── service-worker.js   # Offline caching
-├── README.md           # This file
+├── index.html
+├── style.css
+├── app.js              # Core app logic
+├── auth-sync.js        # Supabase auth, profile & sync
+├── config.js           # Your Supabase credentials (do not commit secrets)
+├── config.example.js   # Template for config.js
+├── supabase-schema.sql # Database setup script
+├── manifest.json
+├── service-worker.js
+├── README.md
 └── assets/
-    ├── icon-192.png    # App icon (192×192)
-    └── icon-512.png    # App icon (512×512)
+    ├── icon-192.png
+    └── icon-512.png
 ```
-
-## License
-
-Free to use for personal study. Built for MBBS students.
 
 ---
 
-**Study smart. Track progress. Ace your exams.** ⚕
+## Quick Start (Local)
+
+```bash
+cd mbbs-study-command-center
+python3 -m http.server 8080
+```
+
+Open http://localhost:8080 — works offline without Supabase (local-only mode).
+
+---
+
+## Supabase Setup (Free Cloud Sync)
+
+### 1. Create a free Supabase project
+
+1. Go to [supabase.com](https://supabase.com) → **Start your project**
+2. Create a new project (free tier is sufficient)
+3. Wait for the database to provision (~2 minutes)
+
+### 2. Run the database schema
+
+1. In Supabase Dashboard → **SQL Editor** → **New query**
+2. Paste the contents of `supabase-schema.sql`
+3. Click **Run**
+
+This creates `profiles`, `study_sessions`, `subjects`, `syllabus_topics`, `user_settings` with Row Level Security.
+
+### 3. Configure authentication
+
+1. Supabase Dashboard → **Authentication** → **Providers**
+2. Enable **Email** provider
+3. For development, disable **Confirm email** under Email settings (optional — enables instant sign-up)
+4. For production, keep email confirmation enabled
+
+### 4. Add your credentials to the app
+
+```bash
+cp config.example.js config.js
+```
+
+Edit `config.js`:
+
+```javascript
+window.MBBS_CONFIG = {
+  supabaseUrl: 'https://YOUR_PROJECT_ID.supabase.co',
+  supabaseAnonKey: 'YOUR_ANON_KEY'   // Settings → API → anon public key
+};
+```
+
+> **Never commit `config.js` with real keys to a public repo.** Add `config.js` to `.gitignore` or use GitHub Secrets for CI.
+
+### 5. Test cloud sync
+
+1. Open the app → **Settings** → **Create Account**
+2. Complete your profile (name, college, year)
+3. Add a study log or start the timer
+4. Open the app on another device/browser → **Sign In**
+5. Data syncs automatically (or tap **Sync Now**)
+
+---
+
+## GitHub Pages Deployment
+
+```bash
+git add .
+git commit -m "Deploy MBBS Study Command Center v2"
+git push origin main
+```
+
+Enable **Settings → Pages → Deploy from branch → main / (root)**.
+
+Live URL: `https://YOUR_USERNAME.github.io/mbbs-study-command-center/`
+
+### Important for GitHub Pages + Supabase
+
+1. In Supabase → **Authentication** → **URL Configuration**, add your GitHub Pages URL to **Site URL** and **Redirect URLs**
+2. Include `config.js` with your anon key in the deployed repo, OR inject credentials at build time
+
+---
+
+## How Sync Works
+
+| Layer | Role |
+|-------|------|
+| **IndexedDB** | Primary storage — instant saves, works offline |
+| **Supabase** | Cloud backup — syncs when signed in + online |
+
+- **Local-first**: every change saves to IndexedDB immediately
+- **Background sync**: changes push to Supabase after 1.5s debounce
+- **Conflict resolution**: newest `updatedAt` timestamp wins
+- **Deletes**: soft-deleted in cloud, removed locally on next pull
+
+---
+
+## Install on Devices
+
+| Device | Steps |
+|--------|-------|
+| **Android** | Chrome → menu → Install app |
+| **iPhone/iPad** | Safari → Share → Add to Home Screen |
+| **MacBook** | Chrome/Edge → address bar install icon |
+
+---
+
+## Updating the App
+
+1. Edit files locally and test
+2. Bump `CACHE_NAME` in `service-worker.js` (e.g. `v3` → `v4`) when static assets change
+3. Push to GitHub — Pages redeploys automatically
+
+---
+
+## License
+
+Free for personal study. Built for MBBS students.
+
+**Study smart. Sync everywhere. Ace your exams.**

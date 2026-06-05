@@ -480,6 +480,27 @@ button:focus-visible {
   margin-bottom: 16px;
 }
 
+.timer-progress {
+  padding: 0 8px;
+  margin-bottom: 12px;
+}
+
+.timer-awake-indicator {
+  margin-top: 16px;
+  font-size: 0.82rem;
+  color: var(--success);
+  font-weight: 500;
+}
+
+.keep-awake-video {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  z-index: -1;
+}
+
 .progress-bar {
   height: 6px;
   background: var(--bg-tertiary);
@@ -865,6 +886,72 @@ button:focus-visible {
 @keyframes toastIn {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+.top-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sync-badge {
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.sync-local { background: var(--bg-tertiary); color: var(--text-muted); }
+.sync-guest { background: var(--accent-soft); color: var(--accent); }
+.sync-syncing { background: var(--warning); color: #000; }
+.sync-ok { background: var(--success-soft); color: var(--success); }
+.sync-error { background: var(--danger-soft); color: var(--danger); }
+.sync-offline { background: var(--bg-tertiary); color: var(--text-muted); }
+
+.dashboard-welcome {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: var(--accent);
+}
+
+.profile-card { margin-top: 12px; }
+
+.profile-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.profile-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), #7c3aed);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 1.4rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.profile-name { font-weight: 700; font-size: 1rem; }
+.profile-email { font-size: 0.82rem; color: var(--text-muted); }
+.profile-meta { font-size: 0.8rem; margin-top: 2px; }
+
+.auth-error {
+  background: var(--danger-soft);
+  color: var(--danger);
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 12px;
+  font-size: 0.88rem;
+}
+
+@media (min-width: 768px) {
+  .sync-badge { font-size: 0.72rem; }
 }
 
 @media (min-width: 768px) {
