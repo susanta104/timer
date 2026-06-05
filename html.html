@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="MBBS Study Command Center — Professional study tracking for medical students">
+  <meta name="theme-color" content="#0a0a0f">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="MBBS Study">
+  <title>MBBS Study Command Center</title>
+  <script>
+    (function () {
+      var theme = localStorage.getItem('mbbs-theme') || 'dark';
+      document.documentElement.setAttribute('data-theme', theme);
+      document.querySelector('meta[name="theme-color"]').content = theme === 'dark' ? '#0a0a0f' : '#f8f9fc';
+    })();
+  </script>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" sizes="192x192" href="assets/icon-192.png">
+  <link rel="apple-touch-icon" href="assets/icon-192.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <span class="sidebar-brand-icon">⚡</span>
+        <h1 class="sidebar-brand">MBBS Command</h1>
+      </div>
+      <nav class="sidebar-nav">
+        <button class="nav-item active" type="button" data-section="dashboard">
+          <span class="nav-icon" aria-hidden="true">📊</span>Dashboard
+        </button>
+        <button class="nav-item" type="button" data-section="timer">
+          <span class="nav-icon" aria-hidden="true">⏱️</span>Study Timer
+        </button>
+        <button class="nav-item" type="button" data-section="syllabus">
+          <span class="nav-icon" aria-hidden="true">📚</span>Syllabus Tracker
+        </button>
+        <button class="nav-item" type="button" data-section="logs">
+          <span class="nav-icon" aria-hidden="true">📝</span>Study Logs
+        </button>
+        <button class="nav-item" type="button" data-section="analytics">
+          <span class="nav-icon" aria-hidden="true">📈</span>Analytics
+        </button>
+        <button class="nav-item" type="button" data-section="settings">
+          <span class="nav-icon" aria-hidden="true">⚙️</span>More / Settings
+        </button>
+      </nav>
+    </aside>
+
+    <main class="main-content">
+      <header class="top-bar">
+        <button class="menu-toggle" id="menu-toggle" type="button" aria-label="Toggle navigation menu" aria-expanded="false">
+          <span aria-hidden="true">☰</span>
+        </button>
+        <h2 class="section-title" id="current-section-title">Dashboard</h2>
+        <div class="streak-badge" id="streak-badge" title="Your consecutive study day streak">
+          <span aria-hidden="true">🔥</span> <span id="streak-count">0</span> days
+        </div>
+      </header>
+
+      <div class="content-container">
+        <!-- DASHBOARD SECTION -->
+        <section id="dashboard" class="section active">
+          <div class="stats-grid">
+            <div class="card card-stat">
+              <span class="stat-icon">🌅</span>
+              <small class="stat-label">Today</small>
+              <strong class="stat-value" id="dash-today">0h 0m</strong>
+            </div>
+            <div class="card card-stat">
+              <span class="stat-icon">📅</span>
+              <small class="stat-label">This Week</small>
+              <strong class="stat-value" id="dash-week">0h 0m</strong>
+            </div>
+            <div class="card card-stat">
+              <span class="stat-icon">🗓️</span>
+              <small class="stat-label">This Month</small>
+              <strong class="stat-value" id="dash-month">0h 0m</strong>
+            </div>
+            <div class="card card-stat">
+              <span class="stat-icon">🏆</span>
+              <small class="stat-label">Lifetime</small>
+              <strong class="stat-value" id="dash-lifetime">0h 0m</strong>
+            </div>
+          </div>
+
+          <div class="card-grid">
+            <div class="card">
+              <h3 class="card-title">⏳ Exam Countdown</h3>
+              <div id="countdown-display" class="countdown-display">
+                <span class="text-secondary">Set your exam date in settings to begin countdown.</span>
+              </div>
+            </div>
+            <div class="card">
+              <h3 class="card-title">📈 Quick Progress</h3>
+              <div class="progress-summary">
+                <div class="progress-bar-container">
+                  <div class="progress-bar" id="dash-syllabus-progress" style="width: 0%"></div>
+                </div>
+                <p class="text-secondary" style="margin-top: 0.5rem;" id="dash-syllabus-text">Syllabus: 0% complete</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- TIMER SECTION -->
+        <section id="timer" class="section">
+          <div class="card timer-card">
+            <div class="timer-preset-container">
+              <label for="timer-preset" class="sr-only">Choose timer preset</label>
+              <select id="timer-preset" class="timer-select"></select>
+            </div>
+            <div class="timer-display" id="timer-clock">00:00:00</div>
+            <div class="timer-controls">
+              <button class="btn btn-primary" id="timer-start" type="button">Start</button>
+              <button class="btn btn-secondary" id="timer-pause" type="button" disabled>Pause</button>
+              <button class="btn" id="timer-stop" type="button" disabled style="background-color: var(--danger-soft); color: var(--danger);">Stop</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- SYLLABUS SECTION -->
+        <section id="syllabus" class="section">
+          <div class="card">
+            <h3 class="card-title">Add New Topic</h3>
+            <form id="add-topic-form" style="display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); align-items: end;">
+              <div class="form-group">
+                <label for="topic-subject">Subject</label>
+                <select id="topic-subject" required></select>
+              </div>
+              <div class="form-group">
+                <label for="topic-name">Topic Name</label>
+                <input type="text" id="topic-name" required placeholder="e.g., Acute Appendicitis">
+              </div>
+              <button type="submit" class="btn btn-primary" style="height: 42px;">Add Topic</button>
+            </form>
+          </div>
+          <div id="syllabus-container" style="margin-top: 1.5rem; display: grid; gap: 1.5rem;"></div>
+        </section>
+
+        <!-- LOGS SECTION -->
+        <section id="logs" class="section">
+          <div class="card">
+            <h3 class="card-title">Log Study Session Manually</h3>
+            <form id="manual-log-form" style="display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); align-items: end;">
+              <div class="form-group">
+                <label for="log-date">Date</label>
+                <input type="date" id="log-date" required>
+              </div>
+              <div class="form-group">
+                <label for="log-subject">Subject</label>
+                <select id="log-subject" required></select>
+              </div>
+              <div class="form-group">
+                <label for="log-duration">Duration (mins)</label>
+                <input type="number" id="log-duration" min="1" required placeholder="60">
+              </div>
+              <div class="form-group" style="grid-column: span auto;">
+                <label for="log-notes">Notes</label>
+                <input type="text" id="log-notes" placeholder="Optional notes" maxlength="100">
+              </div>
+              <button type="submit" class="btn btn-primary" style="height: 42px;">Log Session</button>
+            </form>
+          </div>
+          <div class="card" style="margin-top: 1.5rem; overflow-x: auto; padding: 0;">
+            <table class="table" id="logs-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Subject</th>
+                  <th>Duration</th>
+                  <th>Notes</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="logs-tbody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- ANALYTICS SECTION -->
+        <section id="analytics" class="section">
+          <div class="card-grid">
+            <div class="card">
+              <h3 class="card-title">Weekly Distribution</h3>
+              <div class="chart-container"><canvas id="chart-weekly"></canvas></div>
+            </div>
+            <div class="card">
+              <h3 class="card-title">Subject Breakdown</h3>
+              <div class="chart-container"><canvas id="chart-subjects"></canvas></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- SETTINGS SECTION -->
+        <section id="settings" class="section">
+          <div class="card-grid">
+            
+            <!-- INTEGRATED CLOUD SYNC PORTAL CARD -->
+            <div class="card card-settings">
+              <h3 class="card-title">☁️ Cloud Account Sync</h3>
+              <p class="text-secondary" style="font-size: 0.9rem; margin-bottom: 1rem;">
+                Keep your local medical logs securely matched across your desktop and mobile devices.
+              </p>
+              <div id="cloud-auth-form">
+                <div class="form-group" style="margin-bottom: 0.75rem;">
+                  <label for="cloud-email" style="display:block; margin-bottom:0.25rem; font-size:0.85rem;">Email Address</label>
+                  <input type="email" id="cloud-email" placeholder="doc@example.com" style="width:100%; padding:0.6rem; border-radius:6px; background:var(--bg-tertiary); color:var(--text-primary); border:1px solid var(--border);">
+                </div>
+                <div class="form-group" style="margin-bottom: 1rem;">
+                  <label for="cloud-password" style="display:block; margin-bottom:0.25rem; font-size:0.85rem;">Password</label>
+                  <input type="password" id="cloud-password" placeholder="••••••••" style="width:100%; padding:0.6rem; border-radius:6px; background:var(--bg-tertiary); color:var(--text-primary); border:1px solid var(--border);">
+                </div>
+                <button type="button" class="btn btn-primary" style="width:100%; padding:0.75rem;" onclick="CloudSync.handleAuth()">
+                  Login / Create Profile
+                </button>
+              </div>
+              <div id="cloud-active-status" style="display: none;">
+                <p class="text-secondary" style="font-size:0.9rem; margin-bottom:1rem;">
+                  Logged in as: <strong id="cloud-user-display" style="color:var(--accent);"></strong>
+                </p>
+                <div style="display:flex; gap:0.5rem; margin-bottom: 0.5rem;">
+                  <button type="button" class="btn btn-primary" style="flex:1;" onclick="CloudSync.pushToCloud()">Backup Data 📤</button>
+                  <button type="button" class="btn btn-secondary" style="flex:1;" onclick="CloudSync.pullFromCloud()">Restore Data 📥</button>
+                </div>
+                <button type="button" class="btn" style="width:100%; background-color:var(--danger-soft); color:var(--danger);" onclick="CloudSync.logout()">Logout</button>
+              </div>
+              <p id="cloud-status-message" style="margin-top:0.75rem; font-size:0.85rem; font-weight:bold; text-align:center;"></p>
+            </div>
+
+            <div class="card card-settings">
+              <h3 class="card-title">🎯 Exam Configuration</h3>
+              <form id="settings-exam-form" style="display:grid; gap:1rem;">
+                <div class="form-group">
+                  <label for="settings-exam-date">Target Exam Date</label>
+                  <input type="date" id="settings-exam-date">
+                </div>
+                <button type="submit" class="btn btn-primary">Save Target Date</button>
+              </form>
+            </div>
+
+            <div class="card card-settings">
+              <h3 class="card-title">🎨 Appearance</h3>
+              <p class="text-secondary" style="margin-bottom: 1rem;">Toggle system visual themes.</p>
+              <button class="btn btn-secondary" id="theme-toggle" type="button">Switch Mode</button>
+            </div>
+
+            <div class="card card-settings">
+              <h3 class="card-title">💾 Local Hard Backups</h3>
+              <p class="text-secondary" style="margin-bottom: 1rem;">Export or import manual file backups.</p>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+                <button class="btn btn-secondary" id="btn-export" type="button">Export JSON</button>
+                <button class="btn btn-secondary" id="btn-import" type="button">Import JSON</button>
+              </div>
+              <input type="file" id="file-import" accept=".json" style="display: none;">
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
+  <dialog id="save-session-modal" class="modal">
+    <div class="modal-content">
+      <h3>Save Study Session</h3>
+      <p>Duration: <strong id="modal-duration">0m</strong></p>
+      <form id="save-session-form">
+        <div class="form-group">
+          <label for="modal-subject">Subject</label>
+          <select id="modal-subject" required></select>
+        </div>
+        <div class="form-group">
+          <label for="modal-notes">Notes</label>
+          <textarea id="modal-notes" rows="2" maxlength="500" placeholder="Optional notes"></textarea>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">Save Session</button>
+          <button type="button" id="modal-cancel" class="btn btn-secondary">Discard</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <!-- Supabase CDN Loaded without breaking local scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="app.js"></script>
+</body>
+</html>
