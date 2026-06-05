@@ -1563,6 +1563,70 @@ const PWA = {
   }
 };
 
+const Auth = {
+  user: null,
+
+  async init() {
+    // Check if a user session is already active on load
+    const { data: { session } } = await supabase.auth.getSession();
+    this.user = session?.user || null;
+    
+    // Listen for auth state modifications (sign in, sign out, etc.)
+    supabase.auth.onAuthStateChange((_event, session) => {
+      this.user = session?.user || null;
+      this.updateUI();
+    });
+  },
+
+  async signUp(email, password, fullName) {
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { full_name: fullName }
+        }
+      });
+      if (error) throw error;
+      Toast.show('Signup successful! Check your email for validation.', 'success');
+      return data;
+    } catch (err) {
+      Toast.show(err.message, 'error');
+    }
+  },
+
+  async signIn(email, password) {
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      Toast.show('Logged in successfully!', 'success');
+      return data;
+    } catch (err) {
+      Toast.show(err.message, 'error');
+    }
+  },
+
+  async signOut() {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      Toast.show('Logged out successfully.', 'info');
+    } catch (err) {
+      Toast.show(err.message, 'error');
+    }
+  },
+
+  updateUI() {
+    // This is where you can hide or show login forms, update profile names,
+    // and sync your IndexedDB logs up to your Supabase tables if a user is online.
+    if (this.user) {
+      console.log('User logged in:', this.user.email);
+    } else {
+      console.log('User is a guest.');
+    }
+  }
+};
+
 /* ------------------------------------------------------------------ */
 /* App bootstrap                                                      */
 /* ------------------------------------------------------------------ */
