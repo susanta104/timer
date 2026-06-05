@@ -472,24 +472,25 @@ const Subjects = {
 complete() {
     const elapsed = this.elapsedSeconds;
     this.resetClock(false);
-
-    // --- Audio Alert Implementation ---
+    
+    // Play the study completion notification sound
     try {
-      // Clean, professional electronic chime sound
       const alertAudio = new Audio('https://assets.mixkit.co/active_storage/sfx/2568/2568-84.wav');
-      alertAudio.volume = 0.5; // 50% volume so it doesn't startle you
+      alertAudio.volume = 0.5;
       alertAudio.play();
     } catch (soundError) {
-      // Catches and logs errors if the browser blocks background audio
       console.warn('Audio playback blocked or failed:', soundError);
     }
-    // ----------------------------------
 
     if ('vibrate' in navigator) navigator.vibrate([200, 100, 200]);
     Toast.show('Timer complete!', 'success');
     this._pendingMinutes = Math.max(1, Math.round(elapsed / 60));
     this.openSaveModal();
+
+    // --- Automatically trigger background sync to Supabase ---
+    setTimeout(() => { Auth.syncLocalToCloud(); }, 2000); // Trigger right after save handling
   },
+
 const Sessions = {
   list: [],
 
