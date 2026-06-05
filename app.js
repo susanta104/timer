@@ -26,17 +26,6 @@ const TIMER_PRESETS = {
   custom: 0
 };
 
-// Global Supabase Configurations
-const SUPABASE_URL = 'https://gdlfbybyvkvmbyclgswv.supabase.co'; 
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVlb3Nia3FmYmJ5ZHFkbHpobnB0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2NzQ5MTcsImV4cCI6MjA5NjI1MDkxN30.dTUz1r0YpEIwyDkt9pXAmRi9MbCZ5L6f36LXxj3DgjY';
-
-let supabase = null;
-if (window.supabase) {
-  supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-} else {
-  console.error("Supabase script wasn't fully loaded before initialization.");
-}
-
 const PRESET_LABELS = {
   free: 'Free Timer (counts up)',
   pomodoro: 'Pomodoro — 25 min',
@@ -474,32 +463,6 @@ const Subjects = {
 /* Sessions                                                           */
 /* ------------------------------------------------------------------ */
 
-complete() {
-    const elapsed = this.elapsedSeconds;
-    this.resetClock(false);
-    
-    // Play the study completion notification sound
-    try {
-      const alertAudio = new Audio('https://assets.mixkit.co/active_storage/sfx/2568/2568-84.wav');
-      alertAudio.volume = 0.5;
-      alertAudio.play();
-    } catch (soundError) {
-      console.warn('Audio playback blocked or failed:', soundError);
-    }
-
-    if ('vibrate' in navigator) navigator.vibrate([200, 100, 200]);
-    Toast.show('Timer complete!', 'success');
-    this._pendingMinutes = Math.max(1, Math.round(elapsed / 60));
-    this.openSaveModal();
-
-    // --- Automatically trigger background sync to Supabase ---
-    setTimeout(() => { Auth.syncLocalToCloud(); }, 2000); // Trigger right after save handling
-  },
-
-/* ------------------------------------------------------------------ */
-/* Sessions                                                           */
-/* ------------------------------------------------------------------ */
-
 const Sessions = {
   list: [],
 
@@ -733,41 +696,6 @@ const Dashboard = {
 /* Timer — uses wall-clock time (accurate in background tabs)         */
 /* ------------------------------------------------------------------ */
 
-const Timer = {
-  // Existing properties like timerId: null, timeRemaining: 0, etc.
-  wakeLock: null, // <-- Add this to track the lock object
-
-  // Add these helper methods inside the Timer object:
-  async requestWakeLock() {
-    if (!('wakeLock' in navigator)) return;
-    try {
-      if (!this.wakeLock) {
-        this.wakeLock = await navigator.wakeLock.request('screen');
-        console.log('Screen Wake Lock active.');
-        
-        // Auto-recover if tab is minimized and returned to
-        this.wakeLock.addEventListener('release', () => {
-          if (document.visibilityState === 'visible' && this.timerId) {
-            this.requestWakeLock();
-          }
-        });
-      }
-    } catch (err) {
-      console.warn(`Wake Lock request failed: ${err.message}`);
-    }
-  },
-
-  releaseWakeLock() {
-    if (this.wakeLock) {
-      this.wakeLock.release()
-        .then(() => {
-          this.wakeLock = null;
-          console.log('Screen Wake Lock released.');
-        });
-    }
-  },
-  
-  // ... rest of your Timer methods
 const Timer = {
   state: 'idle',
   mode: 'free',
@@ -1573,223 +1501,6 @@ const PWA = {
   }
 };
 
-/* ==========================================================================
-   SUPABASE AUTHENTICATION & CLOUD SYNC MODULE
-   ========================================================================== */
-const Auth = {
-  user: null,
-  isSignUpMode: false,
-
-  async init() {
-    // 1. Get current session stability
-    const { data: { session } } = await supabase.auth.getSession();
-    this.user = session?.user || null;
-    
-    // 2. Initialize UI listeners
-    this.bindEvents();
-
-    // 3. Keep an eye on global state updates
-    supabase.auth.onAuthStateChange((_event, session) => {
-      this.user = session?.user || null;
-      this.updateUI();
-      if (this.user) {
-        this.syncLocalToCloud(); // Auto sync on login or token refresh
-      }
-    });
-
-    this.updateUI();
-  },
-
-  bindEvents() {
-    // Safely query elements inside a try-catch block
-    const form = document.getElementById('auth-form');
-    const toggleBtn = document.getElementById('auth-toggle-mode');
-    const logoutBtn = document.getElementById('auth-logout-btn');
-    const syncNowBtn = document.getElementById('auth-sync-now-btn');
-
-    if (form) {
-      form.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const email = document.getElementById('auth-email').value;
-        const password = document.getElementById('auth-password').value;
-        const fullNameElement = document.getElementById('auth-fullname');
-        const fullName = fullNameElement ? fullNameElement.value : '';
-
-        const submitBtn = document.getElementById('auth-submit-btn');
-        if (submitBtn) {
-          submitBtn.disabled = true;
-          submitBtn.textContent = this.isSignUpMode ? 'Creating Account...' : 'Logging In...';
-        }
-
-        if (this.isSignUpMode) {
-          await this.signUp(email, password, fullName);
-        } else {
-          await this.signIn(email, password);
-        }
-        
-        if (submitBtn) {
-          submitBtn.disabled = false;
-          submitBtn.textContent = this.isSignUpMode ? 'Create Account' : 'Log In';
-        }
-      });
-    } else {
-      console.error("Auth Error: Could not find 'auth-form' element in HTML.");
-    }
-
-    if (toggleBtn) {
-      toggleBtn.addEventListener('click', (e) => {
-        e.preventDefault(); // Stop any default form jumping
-        this.isSignUpMode = !this.isSignUpMode;
-        
-        const nameGroup = document.getElementById('auth-name-group');
-        const submitBtn = document.getElementById('auth-submit-btn');
-        const fullnameInput = document.getElementById('auth-fullname');
-        
-        if (nameGroup) nameGroup.hidden = !this.isSignUpMode;
-        if (fullnameInput) fullnameInput.required = this.isSignUpMode;
-        
-        if (submitBtn) {
-          submitBtn.textContent = this.isSignUpMode ? 'Create Account' : 'Log In';
-        }
-        
-        toggleBtn.textContent = this.isSignUpMode 
-          ? 'Already have an account? Log In' 
-          : "Don't have an account? Sign Up";
-      });
-    } else {
-      console.error("Auth Error: Could not find 'auth-toggle-mode' element in HTML.");
-    }
-
-    if (logoutBtn) {
-      logoutBtn.addEventListener('click', () => this.signOut());
-    }
-
-    if (syncNowBtn) {
-      syncNowBtn.addEventListener('click', () => {
-        this.syncLocalToCloud(true);
-      });
-    }
-  },
-  
-  async signUp(email, password, fullName) {
-    try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: { data: { full_name: fullName } }
-      });
-      if (error) throw error;
-      Toast.show('Account created! Check your email to verify.', 'success');
-      return data;
-    } catch (err) {
-      Toast.show(err.message, 'error');
-    }
-  },
-
-  async signIn(email, password) {
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) throw error;
-      Toast.show('Welcome back!', 'success');
-      return data;
-    } catch (err) {
-      Toast.show(err.message, 'error');
-    }
-  },
-
-  async signOut() {
-    try {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
-      Toast.show('Logged out successfully.', 'info');
-    } catch (err) {
-      Toast.show(err.message, 'error');
-    }
-  },
-
-  updateUI() {
-    const loggedOutDiv = document.getElementById('auth-logged-out');
-    const loggedInDiv = document.getElementById('auth-logged-in');
-    const emailLabel = document.getElementById('auth-user-email');
-    const displayLabel = document.getElementById('auth-user-display');
-
-    if (!loggedOutDiv || !loggedInDiv) return;
-
-    if (this.user) {
-      loggedOutDiv.hidden = true;
-      loggedInDiv.hidden = false;
-      emailLabel.textContent = this.user.email;
-      displayLabel.textContent = this.user.user_metadata?.full_name 
-        ? `Dr. ${this.user.user_metadata.full_name}` 
-        : 'Medical Student Command Center';
-    } else {
-      loggedOutDiv.hidden = false;
-      loggedInDiv.hidden = true;
-    }
-  },
-
-  /**
-   * REVOLUTIONARY CLOUD SYNCHRONIZER
-   * Collects all records stored locally inside IndexedDB 
-   * and pushes them atomically to Supabase for protection.
-   */
-  async syncLocalToCloud(manualAlert = false) {
-    if (!this.user || !navigator.onLine) {
-      if (manualAlert && !navigator.onLine) Toast.show('Cannot sync while offline.', 'error');
-      return;
-    }
-
-    const badge = document.getElementById('sync-status-badge');
-    if (badge) {
-      badge.textContent = '🔄 Syncing...';
-      badge.style.background = 'var(--warning)';
-    }
-
-    try {
-      // 1. Grab all logs out of local IndexedDB storage
-      const localSessions = await Database.getAll('sessions') || [];
-      
-      if (localSessions.length === 0) {
-        if (badge) {
-          badge.textContent = '☁️ Synced (Empty)';
-          badge.style.background = 'var(--accent)';
-        }
-        return;
-      }
-
-      // 2. Map local records to match cloud schema layout
-      const formattedRecords = localSessions.map(session => ({
-        id: session.id, // retains matching unique ID across clients
-        user_id: this.user.id,
-        date: session.date,
-        subject_id: session.subjectId,
-        duration_minutes: Math.max(1, Math.round(session.duration / 60)) || session.minutes || 1,
-        notes: session.notes || ''
-      }));
-
-      // 3. Perform an UPSERT operation on Supabase (Insert or Update if ID exists)
-      const { error } = await supabase
-        .from('study_sessions')
-        .upsert(formattedRecords, { onConflict: 'id' });
-
-      if (error) throw error;
-
-      if (badge) {
-        badge.textContent = '☁️ Synced';
-        badge.style.background = 'var(--success)';
-      }
-      if (manualAlert) Toast.show('Cloud database updated successfully!', 'success');
-    } catch (syncError) {
-      console.error('Cloud Sync failed:', syncError);
-      if (badge) {
-        badge.textContent = '⚠️ Sync Failed';
-        badge.style.background = 'var(--danger)';
-      }
-      if (manualAlert) Toast.show('Cloud sync failed. Check console configurations.', 'error');
-    }
-  }
-};
-
 /* ------------------------------------------------------------------ */
 /* App bootstrap                                                      */
 /* ------------------------------------------------------------------ */
@@ -1800,7 +1511,6 @@ const App = {
       Toast.init();
       await Database.open();
       await Database.seedDefaults();
-      await Auth.init();
       await Exam.getDate();
       await Theme.init();
       await Subjects.load();
