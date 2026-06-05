@@ -1637,6 +1637,7 @@ const App = {
       Toast.init();
       await Database.open();
       await Database.seedDefaults();
+      await Auth.init();
       await Exam.getDate();
       await Theme.init();
       await Subjects.load();
